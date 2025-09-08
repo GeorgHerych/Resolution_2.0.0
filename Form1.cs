@@ -57,11 +57,10 @@ namespace Resolution
             { "title", new FieldCfg{ Type="center",    X=0.50f,  Y=0.08f,  RelFontH=0.085f } }, // рядок замість "НСЧ"
             // Пояснювальні надписи/галочки вгорі
             { "inorderLbl", new FieldCfg{ Type="left_line", X=0.05f, Y=0.20f, RelFontH=0.06f } },
-            { "refuseLbl",  new FieldCfg{ Type="left_line", X=0.58f, Y=0.20f, RelFontH=0.06f } },
-            // Текст під підписом командира (3 рядки)
+            { "refuseLbl",  new FieldCfg{ Type="left_line", X=0.52f, Y=0.20f, RelFontH=0.06f } },
+            // Текст під підписом командира (2 рядки)
             { "cmdr1", new FieldCfg{ Type="left_line", X=0.05f, Y=0.36f, RelFontH=0.070f } }, // "Командир військової частини…"
             { "rank",  new FieldCfg{ Type="left_line", X=0.05f, Y=0.50f, RelFontH=0.070f } }, // "підполковник"
-            { "name",  new FieldCfg{ Type="left_line", X=0.55f, Y=0.50f, RelFontH=0.070f } }, // "Ігор РАДЧЕНКО"
         };
 
         // ===== Стан вільного позиціонування (для обох типів штампів) =====
@@ -93,10 +92,10 @@ namespace Resolution
         private TextBox tbSheets, tbDocNo, tbDay, tbMonth, tbYear;
         private ComboBox cbRotate;
         private NumericUpDown nudWidthRatio, nudRightMm, nudBottomMm;
-        private CheckBox cbFirstPageOnly, cbFreePos;
+        private CheckBox cbFirstPageOnly, cbFreePos, cbDoubleStamp;
         private Button btnToday, btnSave;
         // -- резолюція
-        private TextBox tbResTitle, tbResCmdr1, tbResRank, tbResName;
+        private TextBox tbResTitle, tbResCmdr1, tbResRank;
         private CheckBox cbInOrder, cbRefuse;
         private NumericUpDown nudResPt, nudResLinePx;
         private CheckBox cbResThin;
@@ -233,10 +232,6 @@ namespace Resolution
             tbResRank = new TextBox { Width = 140, Text = "підполковник" };
             flRes.Controls.Add(tbResRank);
 
-            flRes.Controls.Add(new Label { Text = "ПІБ праворуч:", AutoSize = true, Margin = new Padding(6, 8, 6, 3) });
-            tbResName = new TextBox { Width = 140, Text = "Ігор РАДЧЕНКО" };
-            flRes.Controls.Add(tbResName);
-
             cbInOrder = new CheckBox { Text = "В наказ ☑", Checked = false, Margin = new Padding(6, 6, 3, 3) };
             cbRefuse = new CheckBox { Text = "Відмова ☑", Checked = false, Margin = new Padding(6, 6, 3, 3) };
             flRes.Controls.Add(cbInOrder); flRes.Controls.Add(cbRefuse);
@@ -278,6 +273,9 @@ namespace Resolution
             cbFirstPageOnly = new CheckBox { Text = "Лише 1-ша сторінка", Checked = false, Margin = new Padding(12, 6, 3, 3) };
             flPlace.Controls.Add(cbFirstPageOnly);
 
+            cbDoubleStamp = new CheckBox { Text = "Два штампи", Checked = false, Margin = new Padding(12, 6, 3, 3) };
+            flPlace.Controls.Add(cbDoubleStamp);
+
             flPlace.Controls.Add(new Label { Text = "Поворот (°):", AutoSize = true, Margin = new Padding(10, 8, 6, 3) });
             cbRotate = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 70 };
             cbRotate.Items.AddRange(new object[] { 0, 90, 180, 270 });
@@ -311,7 +309,7 @@ namespace Resolution
             column.Controls.Add(flSave);
 
             // реагування на зміни
-            foreach (var tb in new[] { tbSheets, tbDocNo, tbDay, tbMonth, tbYear, tbResTitle, tbResCmdr1, tbResRank, tbResName })
+            foreach (var tb in new[] { tbSheets, tbDocNo, tbDay, tbMonth, tbYear, tbResTitle, tbResCmdr1, tbResRank })
                 tb.TextChanged += (s, e) => RenderAll();
             cbInOrder.CheckedChanged += (s, e) => RenderAll();
             cbRefuse.CheckedChanged += (s, e) => RenderAll();
@@ -323,6 +321,7 @@ namespace Resolution
             nudRightMm.ValueChanged += (s, e) => RenderAll();
             nudBottomMm.ValueChanged += (s, e) => RenderAll();
             cbFirstPageOnly.CheckedChanged += (s, e) => RenderAll();
+            cbDoubleStamp.CheckedChanged += (s, e) => RenderAll();
             cbRotate.SelectedIndexChanged += (s, e) => RenderAll();
             tbZoom.Scroll += (s, e) => RenderAll();
             nudPage.ValueChanged += (s, e) => RenderAll();
@@ -535,11 +534,9 @@ namespace Resolution
 
                 var cfgCmdr = FIELDS_RES["cmdr1"];
                 var cfgRank = new FieldCfg { Type = "left_line", X = FIELDS_RES["rank"].X, Y = FIELDS_RES["rank"].Y + dRel, RelFontH = FIELDS_RES["rank"].RelFontH };
-                var cfgName = new FieldCfg { Type = "left_line", X = FIELDS_RES["name"].X, Y = FIELDS_RES["name"].Y + 2 * dRel, RelFontH = FIELDS_RES["name"].RelFontH };
 
                 DrawFieldLeftLine(g, baseSize, fLine, cfgCmdr, tbResCmdr1.Text.Trim(), strokeW);
                 DrawFieldLeftLine(g, baseSize, fLine, cfgRank, tbResRank.Text.Trim(), strokeW);
-                DrawFieldLeftLine(g, baseSize, fLine, cfgName, tbResName.Text.Trim(), strokeW);
             }
 
             int deg = (int)cbRotate.SelectedItem;
@@ -625,6 +622,13 @@ namespace Resolution
             {
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
                 g.DrawImage(stampBmp, new Rectangle(x0, y0, targetWpx, targetHpx));
+                if (cbDoubleStamp.Checked)
+                {
+                    int gapPx = (int)(MmToPt(5f) * zoom);
+                    int y2 = y0 - targetHpx - gapPx;
+                    if (y2 < 0) y2 = y0;
+                    g.DrawImage(stampBmp, new Rectangle(x0, y2, targetWpx, targetHpx));
+                }
             }
 
             // Геометрія для drag
@@ -765,7 +769,7 @@ namespace Resolution
                 InsertStampIntoPdf(
                     _previewPdfPath, sfd.FileName, pngBytes,
                     (float)nudWidthRatio.Value, (float)nudRightMm.Value, (float)nudBottomMm.Value,
-                    cbFirstPageOnly.Checked, _freePosition, _posXPct, _posYPct
+                    cbFirstPageOnly.Checked, _freePosition, _posXPct, _posYPct, cbDoubleStamp.Checked
                 );
                 MessageBox.Show(this, "Файл збережено:\n" + sfd.FileName, "Готово",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -787,7 +791,8 @@ namespace Resolution
             bool firstPageOnly,
             bool freePos,
             float posXPct,
-            float posYPct)
+            float posYPct,
+            bool doubleStamp)
         {
             using (var input = PdfSharp.Pdf.IO.PdfReader.Open(srcPdf, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Modify))
             using (var ms = new MemoryStream(pngStamp, writable: false))
@@ -822,6 +827,14 @@ namespace Resolution
 
                         var rect = new PdfSharp.Drawing.XRect(x, y, targetW, targetH);
                         gfx.DrawImage(ximg, rect);
+                        if (doubleStamp)
+                        {
+                            double gap = MmToPt(5f);
+                            double y2 = y - targetH - gap;
+                            if (y2 < 0) y2 = y;
+                            var rect2 = new PdfSharp.Drawing.XRect(x, y2, targetW, targetH);
+                            gfx.DrawImage(ximg, rect2);
+                        }
                     }
                 }
                 input.Save(outPdf);
