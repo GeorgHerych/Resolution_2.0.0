@@ -56,8 +56,8 @@ namespace Resolution
         {
             { "title", new FieldCfg{ Type="center",    X=0.50f,  Y=0.08f,  RelFontH=0.085f } }, // рядок замість "НСЧ"
             // Пояснювальні надписи/галочки вгорі
-            { "inorderLbl", new FieldCfg{ Type="left_line", X=0.05f, Y=0.20f, RelFontH=0.06f } },
-            { "refuseLbl",  new FieldCfg{ Type="left_line", X=0.52f, Y=0.20f, RelFontH=0.06f } },
+            { "inorderLbl", new FieldCfg{ Type="left_line", X=0.05f, Y=0.24f, RelFontH=0.06f } },
+            { "refuseLbl",  new FieldCfg{ Type="left_line", X=0.52f, Y=0.24f, RelFontH=0.06f } },
             // Текст під підписом командира (2 рядки)
             { "cmdr1", new FieldCfg{ Type="left_line", X=0.05f, Y=0.36f, RelFontH=0.070f } }, // "Командир військової частини…"
             { "rank",  new FieldCfg{ Type="left_line", X=0.05f, Y=0.50f, RelFontH=0.070f } }, // "підполковник"
@@ -66,13 +66,16 @@ namespace Resolution
         // ===== Стан вільного позиціонування (для обох типів штампів) =====
         private bool _freePosition = false;
         private bool _dragging = false;
-        private float _posXPct = float.NaN, _posYPct = float.NaN; // 0..1 — верхній-лівий кут штампа відносно сторінки
+        private enum DragTarget { None, Reg, Res }
+        private DragTarget _dragTarget = DragTarget.None;
+        private float _posRegXPct = float.NaN, _posRegYPct = float.NaN;
+        private float _posResXPct = float.NaN, _posResYPct = float.NaN;
         private int _dragOffsetX, _dragOffsetY;
 
         // Для хіт-тесту
         private int _lastPreviewW, _lastPreviewH;
-        private int _lastStampW, _lastStampH;
-        private int _lastStampX, _lastStampY;
+        private int _lastStampRegW, _lastStampRegH, _lastStampRegX, _lastStampRegY;
+        private int _lastStampResW, _lastStampResH, _lastStampResX, _lastStampResY;
 
         // ===== Стан документу =====
         private PdfiumDoc _pdfDoc;         // для попереднього перегляду
@@ -158,7 +161,7 @@ namespace Resolution
 
             // Файл
             var grpFile = new GroupBox { Text = "Файл", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
-            var flFile = new FlowLayoutPanel { AutoSize = true };
+            var flFile = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             flFile.Controls.Add(new Label { Text = "PDF / DOCX / DOC:", AutoSize = true, Margin = new Padding(6, 9, 6, 3) });
             tbFile = new TextBox { Width = 300 };
             var btnBrowse = new Button { Text = "Обрати…" };
@@ -172,7 +175,7 @@ namespace Resolution
 
             // Тип штампа
             var grpType = new GroupBox { Text = "Тип штампа", AutoSize = true };
-            var flType = new FlowLayoutPanel { AutoSize = true };
+            var flType = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             rbReg = new RadioButton { Text = "Штамп реєстрації", Checked = true, AutoSize = true };
             rbRes = new RadioButton { Text = "Резолюція", AutoSize = true, Margin = new Padding(12, 3, 3, 3) };
             rbReg.CheckedChanged += (s, e) => { RenderAll(); };
@@ -190,7 +193,7 @@ namespace Resolution
 
             // Поля реєстраційного штампа
             var grpReg = new GroupBox { Text = "Реєстраційний — поля", AutoSize = true };
-            var flReg = new FlowLayoutPanel { AutoSize = true };
+            var flReg = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             flReg.Controls.Add(new Label { Text = "Аркушів “ ”:", AutoSize = true, Margin = new Padding(6, 8, 6, 3) });
             tbSheets = new TextBox { Width = 60, Text = "1" };
             flReg.Controls.Add(tbSheets);
@@ -219,7 +222,7 @@ namespace Resolution
 
             // Поля резолюції
             var grpRes = new GroupBox { Text = "Резолюція — текст", AutoSize = true };
-            var flRes = new FlowLayoutPanel { AutoSize = true };
+            var flRes = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             flRes.Controls.Add(new Label { Text = "Верхній рядок:", AutoSize = true, Margin = new Padding(6, 8, 6, 3) });
             tbResTitle = new TextBox { Width = 300, Text = " " };
             flRes.Controls.Add(tbResTitle);
@@ -241,7 +244,7 @@ namespace Resolution
 
             // Формат резолюції
             var grpResFmt = new GroupBox { Text = "Резолюція — формат", AutoSize = true };
-            var flResFmt = new FlowLayoutPanel { AutoSize = true };
+            var flResFmt = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             flResFmt.Controls.Add(new Label { Text = "Розмір (pt):", AutoSize = true, Margin = new Padding(6, 8, 6, 3) });
             nudResPt = new NumericUpDown { Minimum = 10, Maximum = 40, Value = 20, DecimalPlaces = 0, Width = 70 };
             flResFmt.Controls.Add(nudResPt);
@@ -257,7 +260,7 @@ namespace Resolution
 
             // Розміщення / поворот / вільне позиціонування
             var grpPlace = new GroupBox { Text = "Розміщення на сторінці", AutoSize = true };
-            var flPlace = new FlowLayoutPanel { AutoSize = true };
+            var flPlace = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             flPlace.Controls.Add(new Label { Text = "Ширина (% стор.):", AutoSize = true, Margin = new Padding(6, 8, 6, 3) });
             nudWidthRatio = new NumericUpDown { DecimalPlaces = 2, Increment = 0.01M, Minimum = 0.10M, Maximum = 0.80M, Value = 0.45M, Width = 80 };
             flPlace.Controls.Add(nudWidthRatio);
@@ -291,7 +294,7 @@ namespace Resolution
 
             // Сторінка/зум
             var grpPg = new GroupBox { Text = "Перегляд", AutoSize = true };
-            var flPg = new FlowLayoutPanel { AutoSize = true };
+            var flPg = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             flPg.Controls.Add(new Label { Text = "Сторінка:", AutoSize = true, Margin = new Padding(6, 8, 6, 3) });
             nudPage = new NumericUpDown { Minimum = 1, Maximum = 1, Value = 1, Width = 80 };
             flPg.Controls.Add(nudPage);
@@ -591,57 +594,142 @@ namespace Resolution
             var rendered = _pdfDoc.Render(pageIndex, bmpW, bmpH, 96, 96, PdfiumViewer.PdfRenderFlags.Annotations);
             var baseBmp = new Bitmap(rendered);
 
-            var stampBmp = BuildCurrentStamp();
+            var regBmp = BuildRegistrationStamp();
+            var resBmp = BuildResolutionStamp();
 
             int targetWpx = (int)(pageSizePt.Width * (float)nudWidthRatio.Value * zoom);
-            int targetHpx = Math.Max(1, (int)(targetWpx * (stampBmp.Height / (float)stampBmp.Width)));
+            int targetHpx = Math.Max(1, (int)(targetWpx * (regBmp.Height / (float)regBmp.Width)));
             int mrPx = (int)(MmToPt((float)nudRightMm.Value) * zoom);
             int mbPx = (int)(MmToPt((float)nudBottomMm.Value) * zoom);
+            int gapPx = (int)(MmToPt(5f) * zoom);
 
-            if (_freePosition && (float.IsNaN(_posXPct) || float.IsNaN(_posYPct)))
+            int xReg = 0, yReg = 0, xRes = 0, yRes = 0;
+            if (cbDoubleStamp.Checked)
             {
-                int defX = baseBmp.Width - mrPx - targetWpx;
-                int defY = baseBmp.Height - mbPx - targetHpx;
-                _posXPct = defX / (float)baseBmp.Width;
-                _posYPct = defY / (float)baseBmp.Height;
+                if (_freePosition)
+                {
+                    if (float.IsNaN(_posRegXPct) || float.IsNaN(_posRegYPct))
+                    {
+                        int defX = baseBmp.Width - mrPx - targetWpx;
+                        int defY = baseBmp.Height - mbPx - targetHpx;
+                        _posRegXPct = defX / (float)baseBmp.Width;
+                        _posRegYPct = defY / (float)baseBmp.Height;
+                    }
+                    if (float.IsNaN(_posResXPct) || float.IsNaN(_posResYPct))
+                    {
+                        int defX = (int)(_posRegXPct * baseBmp.Width);
+                        int defY = (int)(_posRegYPct * baseBmp.Height) - targetHpx - gapPx;
+                        if (defY < 0) defY = (int)(_posRegYPct * baseBmp.Height);
+                        _posResXPct = defX / (float)baseBmp.Width;
+                        _posResYPct = defY / (float)baseBmp.Height;
+                    }
+                    xReg = (int)(_posRegXPct * baseBmp.Width);
+                    yReg = (int)(_posRegYPct * baseBmp.Height);
+                    xRes = (int)(_posResXPct * baseBmp.Width);
+                    yRes = (int)(_posResYPct * baseBmp.Height);
+                }
+                else
+                {
+                    xReg = baseBmp.Width - mrPx - targetWpx;
+                    yReg = baseBmp.Height - mbPx - targetHpx;
+                    xRes = xReg;
+                    yRes = yReg - targetHpx - gapPx;
+                    if (yRes < 0) yRes = yReg;
+                    _posRegXPct = xReg / (float)baseBmp.Width;
+                    _posRegYPct = yReg / (float)baseBmp.Height;
+                    _posResXPct = xRes / (float)baseBmp.Width;
+                    _posResYPct = yRes / (float)baseBmp.Height;
+                }
             }
-
-            int x0, y0;
-            if (_freePosition && !float.IsNaN(_posXPct) && !float.IsNaN(_posYPct))
+            else if (rbReg.Checked)
             {
-                x0 = (int)(_posXPct * baseBmp.Width);
-                y0 = (int)(_posYPct * baseBmp.Height);
+                if (_freePosition && (float.IsNaN(_posRegXPct) || float.IsNaN(_posRegYPct)))
+                {
+                    int defX = baseBmp.Width - mrPx - targetWpx;
+                    int defY = baseBmp.Height - mbPx - targetHpx;
+                    _posRegXPct = defX / (float)baseBmp.Width;
+                    _posRegYPct = defY / (float)baseBmp.Height;
+                }
+                if (_freePosition)
+                {
+                    xReg = (int)(_posRegXPct * baseBmp.Width);
+                    yReg = (int)(_posRegYPct * baseBmp.Height);
+                }
+                else
+                {
+                    xReg = baseBmp.Width - mrPx - targetWpx;
+                    yReg = baseBmp.Height - mbPx - targetHpx;
+                    _posRegXPct = xReg / (float)baseBmp.Width;
+                    _posRegYPct = yReg / (float)baseBmp.Height;
+                }
             }
-            else
+            else // резолюція одна
             {
-                x0 = baseBmp.Width - mrPx - targetWpx;
-                y0 = baseBmp.Height - mbPx - targetHpx;
+                if (_freePosition && (float.IsNaN(_posResXPct) || float.IsNaN(_posResYPct)))
+                {
+                    int defX = baseBmp.Width - mrPx - targetWpx;
+                    int defY = baseBmp.Height - mbPx - targetHpx;
+                    _posResXPct = defX / (float)baseBmp.Width;
+                    _posResYPct = defY / (float)baseBmp.Height;
+                }
+                if (_freePosition)
+                {
+                    xRes = (int)(_posResXPct * baseBmp.Width);
+                    yRes = (int)(_posResYPct * baseBmp.Height);
+                }
+                else
+                {
+                    xRes = baseBmp.Width - mrPx - targetWpx;
+                    yRes = baseBmp.Height - mbPx - targetHpx;
+                    _posResXPct = xRes / (float)baseBmp.Width;
+                    _posResYPct = yRes / (float)baseBmp.Height;
+                }
             }
 
             using (var g = Graphics.FromImage(baseBmp))
             {
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.DrawImage(stampBmp, new Rectangle(x0, y0, targetWpx, targetHpx));
                 if (cbDoubleStamp.Checked)
                 {
-                    int gapPx = (int)(MmToPt(5f) * zoom);
-                    int y2 = y0 - targetHpx - gapPx;
-                    if (y2 < 0) y2 = y0;
-                    g.DrawImage(stampBmp, new Rectangle(x0, y2, targetWpx, targetHpx));
+                    g.DrawImage(regBmp, new Rectangle(xReg, yReg, targetWpx, targetHpx));
+                    g.DrawImage(resBmp, new Rectangle(xRes, yRes, targetWpx, targetHpx));
+                }
+                else if (rbReg.Checked)
+                {
+                    g.DrawImage(regBmp, new Rectangle(xReg, yReg, targetWpx, targetHpx));
+                }
+                else
+                {
+                    g.DrawImage(resBmp, new Rectangle(xRes, yRes, targetWpx, targetHpx));
                 }
             }
 
-            // Геометрія для drag
             _lastPreviewW = baseBmp.Width; _lastPreviewH = baseBmp.Height;
-            _lastStampW = targetWpx; _lastStampH = targetHpx;
-            _lastStampX = x0; _lastStampY = y0;
+            if (cbDoubleStamp.Checked || rbReg.Checked)
+            {
+                _lastStampRegW = targetWpx; _lastStampRegH = targetHpx;
+                _lastStampRegX = xReg; _lastStampRegY = yReg;
+            }
+            else
+            {
+                _lastStampRegW = _lastStampRegH = 0;
+            }
+            if (cbDoubleStamp.Checked || rbRes.Checked)
+            {
+                _lastStampResW = targetWpx; _lastStampResH = targetHpx;
+                _lastStampResX = xRes; _lastStampResY = yRes;
+            }
+            else
+            {
+                _lastStampResW = _lastStampResH = 0;
+            }
 
-            // Показ у скролі: виставляємо розмір PictureBox = розмір зображення
             pbPreview.Image?.Dispose();
             pbPreview.Image = (Bitmap)baseBmp.Clone();
             pbPreview.Size = baseBmp.Size;
 
-            stampBmp.Dispose();
+            regBmp.Dispose();
+            resBmp.Dispose();
             baseBmp.Dispose();
         }
 
@@ -650,37 +738,81 @@ namespace Resolution
         {
             if (!_freePosition || _pdfDoc == null || pbPreview.Image == null) return;
 
-            var rect = new Rectangle(_lastStampX, _lastStampY, _lastStampW, _lastStampH);
-            if (rect.Contains(e.Location))
+            _dragTarget = DragTarget.None;
+            if (cbDoubleStamp.Checked)
             {
-                _dragging = true;
-                _dragOffsetX = e.X - _lastStampX;
-                _dragOffsetY = e.Y - _lastStampY;
+                var rectReg = new Rectangle(_lastStampRegX, _lastStampRegY, _lastStampRegW, _lastStampRegH);
+                var rectRes = new Rectangle(_lastStampResX, _lastStampResY, _lastStampResW, _lastStampResH);
+                if (rectReg.Contains(e.Location))
+                {
+                    _dragTarget = DragTarget.Reg;
+                    _dragging = true;
+                    _dragOffsetX = e.X - _lastStampRegX;
+                    _dragOffsetY = e.Y - _lastStampRegY;
+                }
+                else if (rectRes.Contains(e.Location))
+                {
+                    _dragTarget = DragTarget.Res;
+                    _dragging = true;
+                    _dragOffsetX = e.X - _lastStampResX;
+                    _dragOffsetY = e.Y - _lastStampResY;
+                }
+            }
+            else if (rbReg.Checked)
+            {
+                var rect = new Rectangle(_lastStampRegX, _lastStampRegY, _lastStampRegW, _lastStampRegH);
+                if (rect.Contains(e.Location))
+                {
+                    _dragTarget = DragTarget.Reg;
+                    _dragging = true;
+                    _dragOffsetX = e.X - _lastStampRegX;
+                    _dragOffsetY = e.Y - _lastStampRegY;
+                }
             }
             else
             {
-                _dragging = true;
-                _dragOffsetX = _lastStampW / 2;
-                _dragOffsetY = _lastStampH / 2;
-                PbPreview_MouseMove(sender, e);
+                var rect = new Rectangle(_lastStampResX, _lastStampResY, _lastStampResW, _lastStampResH);
+                if (rect.Contains(e.Location))
+                {
+                    _dragTarget = DragTarget.Res;
+                    _dragging = true;
+                    _dragOffsetX = e.X - _lastStampResX;
+                    _dragOffsetY = e.Y - _lastStampResY;
+                }
             }
         }
         private void PbPreview_MouseMove(object sender, MouseEventArgs e)
         {
             if (!_dragging || !_freePosition || pbPreview.Image == null) return;
+            if (_dragTarget == DragTarget.None) return;
+
+            int w = _dragTarget == DragTarget.Reg ? _lastStampRegW : _lastStampResW;
+            int h = _dragTarget == DragTarget.Reg ? _lastStampRegH : _lastStampResH;
 
             int x = e.X - _dragOffsetX;
             int y = e.Y - _dragOffsetY;
 
-            x = Math.Max(0, Math.Min(_lastPreviewW - _lastStampW, x));
-            y = Math.Max(0, Math.Min(_lastPreviewH - _lastStampH, y));
+            x = Math.Max(0, Math.Min(_lastPreviewW - w, x));
+            y = Math.Max(0, Math.Min(_lastPreviewH - h, y));
 
-            _posXPct = (float)x / _lastPreviewW;
-            _posYPct = (float)y / _lastPreviewH;
+            if (_dragTarget == DragTarget.Reg)
+            {
+                _posRegXPct = (float)x / _lastPreviewW;
+                _posRegYPct = (float)y / _lastPreviewH;
+            }
+            else if (_dragTarget == DragTarget.Res)
+            {
+                _posResXPct = (float)x / _lastPreviewW;
+                _posResYPct = (float)y / _lastPreviewH;
+            }
 
             RenderAll();
         }
-        private void PbPreview_MouseUp(object sender, MouseEventArgs e) => _dragging = false;
+        private void PbPreview_MouseUp(object sender, MouseEventArgs e)
+        {
+            _dragging = false;
+            _dragTarget = DragTarget.None;
+        }
 
         // ============================ Робота з файлами ============================
         private void ChooseInput()
@@ -719,7 +851,7 @@ namespace Resolution
                 nudPage.Value = 1;
 
                 // скидаємо вільну позицію
-                _posXPct = _posYPct = float.NaN;
+                _posRegXPct = _posRegYPct = _posResXPct = _posResYPct = float.NaN;
 
                 RenderAll();
             }
@@ -742,14 +874,35 @@ namespace Resolution
                 return;
             }
 
-            var stampBmp = BuildCurrentStamp();
-            byte[] pngBytes;
-            using (var ms = new MemoryStream())
+            byte[] pngMain;
+            byte[] pngSecond = null;
+            if (cbDoubleStamp.Checked)
             {
-                stampBmp.Save(ms, ImageFormat.Png);
-                pngBytes = ms.ToArray();
+                var bmpReg = BuildRegistrationStamp();
+                var bmpRes = BuildResolutionStamp();
+                using (var ms = new MemoryStream())
+                {
+                    bmpReg.Save(ms, ImageFormat.Png);
+                    pngMain = ms.ToArray();
+                }
+                using (var ms = new MemoryStream())
+                {
+                    bmpRes.Save(ms, ImageFormat.Png);
+                    pngSecond = ms.ToArray();
+                }
+                bmpReg.Dispose();
+                bmpRes.Dispose();
             }
-            stampBmp.Dispose();
+            else
+            {
+                var bmp = BuildCurrentStamp();
+                using (var ms = new MemoryStream())
+                {
+                    bmp.Save(ms, ImageFormat.Png);
+                    pngMain = ms.ToArray();
+                }
+                bmp.Dispose();
+            }
 
             string baseDir = Path.GetDirectoryName(_sourcePath) ?? Environment.CurrentDirectory;
             string suggested = (!string.IsNullOrWhiteSpace(tbDocNo.Text) ? tbDocNo.Text.Trim()
@@ -766,10 +919,12 @@ namespace Resolution
 
             try
             {
+                float posX = cbDoubleStamp.Checked ? _posRegXPct : (rbReg.Checked ? _posRegXPct : _posResXPct);
+                float posY = cbDoubleStamp.Checked ? _posRegYPct : (rbReg.Checked ? _posRegYPct : _posResYPct);
                 InsertStampIntoPdf(
-                    _previewPdfPath, sfd.FileName, pngBytes,
+                    _previewPdfPath, sfd.FileName, pngMain,
                     (float)nudWidthRatio.Value, (float)nudRightMm.Value, (float)nudBottomMm.Value,
-                    cbFirstPageOnly.Checked, _freePosition, _posXPct, _posYPct, cbDoubleStamp.Checked
+                    cbFirstPageOnly.Checked, _freePosition, posX, posY, false, pngSecond, _posResXPct, _posResYPct
                 );
                 MessageBox.Show(this, "Файл збережено:\n" + sfd.FileName, "Готово",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -792,7 +947,10 @@ namespace Resolution
             bool freePos,
             float posXPct,
             float posYPct,
-            bool doubleStamp)
+            bool doubleStamp,
+            byte[] pngStamp2 = null,
+            float posXPct2 = float.NaN,
+            float posYPct2 = float.NaN)
         {
             using (var input = PdfSharp.Pdf.IO.PdfReader.Open(srcPdf, PdfSharp.Pdf.IO.PdfDocumentOpenMode.Modify))
             using (var ms = new MemoryStream(pngStamp, writable: false))
@@ -827,13 +985,35 @@ namespace Resolution
 
                         var rect = new PdfSharp.Drawing.XRect(x, y, targetW, targetH);
                         gfx.DrawImage(ximg, rect);
-                        if (doubleStamp)
+                        if (doubleStamp && pngStamp2 == null)
                         {
                             double gap = MmToPt(5f);
                             double y2 = y - targetH - gap;
                             if (y2 < 0) y2 = y;
                             var rect2 = new PdfSharp.Drawing.XRect(x, y2, targetW, targetH);
                             gfx.DrawImage(ximg, rect2);
+                        }
+                        if (pngStamp2 != null)
+                        {
+                            using (var ms2 = new MemoryStream(pngStamp2, writable: false))
+                            using (var ximg2 = XImage.FromStream(ms2))
+                            {
+                                double x2, y2;
+                                if (freePos && !float.IsNaN(posXPct2) && !float.IsNaN(posYPct2))
+                                {
+                                    x2 = posXPct2 * pageW;
+                                    y2 = posYPct2 * pageH;
+                                }
+                                else
+                                {
+                                    double gap = MmToPt(5f);
+                                    x2 = x;
+                                    y2 = y - targetH - gap;
+                                    if (y2 < 0) y2 = y;
+                                }
+                                var rect2 = new PdfSharp.Drawing.XRect(x2, y2, targetW, targetH);
+                                gfx.DrawImage(ximg2, rect2);
+                            }
                         }
                     }
                 }
