@@ -141,10 +141,11 @@ namespace Resolution
 
             // ---- Ліва панель (перегляд з прокруткою)
             pnlViewer = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.DimGray };
-            pbPreview = new PictureBox { SizeMode = PictureBoxSizeMode.Normal, BackColor = Color.Gray };
+            pbPreview = new PictureBox { SizeMode = PictureBoxSizeMode.Normal, BackColor = Color.Gray, TabStop = true };
             pbPreview.MouseDown += PbPreview_MouseDown;
             pbPreview.MouseMove += PbPreview_MouseMove;
             pbPreview.MouseUp += PbPreview_MouseUp;
+            pbPreview.MouseWheel += PbPreview_MouseWheel;
             pnlViewer.Controls.Add(pbPreview);
             split.Panel1.Controls.Add(pnlViewer);
 
@@ -162,7 +163,7 @@ namespace Resolution
             // Файл
             var grpFile = new GroupBox { Text = "Файл", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
             var flFile = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-            flFile.Controls.Add(new Label { Text = "PDF / DOCX / DOC:", AutoSize = true, Margin = new Padding(6, 9, 6, 3) });
+            flFile.Controls.Add(new Label { Text = "PDF / DOCX / DOC / ODT / ODP:", AutoSize = true, Margin = new Padding(6, 9, 6, 3) });
             tbFile = new TextBox { Width = 300 };
             var btnBrowse = new Button { Text = "Обрати…" };
             lblSrcType = new Label { Text = "—", AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(8, 9, 6, 3) };
@@ -736,6 +737,7 @@ namespace Resolution
         // ============================ Перетягування мишею ============================
         private void PbPreview_MouseDown(object sender, MouseEventArgs e)
         {
+            pbPreview.Focus();
             if (!_freePosition || _pdfDoc == null || pbPreview.Image == null) return;
 
             _dragTarget = DragTarget.None;
@@ -814,13 +816,22 @@ namespace Resolution
             _dragTarget = DragTarget.None;
         }
 
+        private void PbPreview_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if (_pdfDoc == null) return;
+            if (e.Delta > 0 && nudPage.Value > 1)
+                nudPage.Value--;
+            else if (e.Delta < 0 && nudPage.Value < nudPage.Maximum)
+                nudPage.Value++;
+        }
+
         // ============================ Робота з файлами ============================
         private void ChooseInput()
         {
             var ofd = new OpenFileDialog
             {
                 Title = "Оберіть файл",
-                Filter = "Supported|*.pdf;*.doc;*.docx|PDF|*.pdf|Word|*.doc;*.docx"
+                Filter = "Supported|*.pdf;*.doc;*.docx;*.odt;*.odp|PDF|*.pdf|Word/ODF|*.doc;*.docx;*.odt;*.odp"
             };
             if (ofd.ShowDialog(this) != DialogResult.OK) return;
 
@@ -831,13 +842,13 @@ namespace Resolution
             try
             {
                 string ext = Path.GetExtension(_sourcePath).ToLowerInvariant();
-                if (ext == ".doc" || ext == ".docx")
+                if (ext == ".doc" || ext == ".docx" || ext == ".odt" || ext == ".odp")
                 {
                     _tempDir = Path.Combine(Path.GetTempPath(), "stamp_preview_" + Guid.NewGuid().ToString("N"));
                     Directory.CreateDirectory(_tempDir);
                     _previewPdfPath = Path.Combine(_tempDir, "preview.pdf");
-                    ConvertWordToPdf(_sourcePath, _previewPdfPath);
-                    lblSrcType.Text = "Тип: Word → PDF (перетворено)";
+                    ConvertOfficeToPdf(_sourcePath, _previewPdfPath);
+                    lblSrcType.Text = $"Тип: {ext.ToUpperInvariant().TrimStart('.')} → PDF (перетворено)";
                 }
                 else
                 {
@@ -1021,21 +1032,24 @@ namespace Resolution
             }
         }
 
-        private static void ConvertWordToPdf(string src, string dst)
+        private static void ConvertOfficeToPdf(string src, string dst)
         {
-
 #if NETFRAMEWORK || WINDOWS
-            try
+            string ext = Path.GetExtension(src).ToLowerInvariant();
+            if (ext == ".doc" || ext == ".docx")
             {
-                var word = new WordInterop.Application { Visible = false };
-                try { word.DisplayAlerts = WordInterop.WdAlertLevel.wdAlertsNone; } catch { }
-                var doc = word.Documents.Open(src, ReadOnly: true, Visible: false);
-                doc.ExportAsFixedFormat(dst, WordInterop.WdExportFormat.wdExportFormatPDF);
-                doc.Close(false);
-                word.Quit();
-                if (File.Exists(dst)) return;
+                try
+                {
+                    var word = new WordInterop.Application { Visible = false };
+                    try { word.DisplayAlerts = WordInterop.WdAlertLevel.wdAlertsNone; } catch { }
+                    var doc = word.Documents.Open(src, ReadOnly: true, Visible: false);
+                    doc.ExportAsFixedFormat(dst, WordInterop.WdExportFormat.wdExportFormatPDF);
+                    doc.Close(false);
+                    word.Quit();
+                    if (File.Exists(dst)) return;
+                }
+                catch { }
             }
-            catch { }
 #endif
             string[] candidates =
             {
@@ -1071,7 +1085,7 @@ namespace Resolution
             }
             catch { }
 
-            throw new InvalidOperationException("Не вдалося конвертувати DOC/DOCX у PDF (Word або LibreOffice).");
+            throw new InvalidOperationException("Не вдалося конвертувати DOC/DOCX/ODT/ODP у PDF (Word або LibreOffice).");
         }
 
         private void CleanupTemp()
